@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chatbot Keuangan Pribadi</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .chat-container { height: calc(100vh - 180px); }
+        .message-bubble { max-width: 80%; word-wrap: break-word; }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans">
+
+<div class="max-w-4xl mx-auto p-4 h-screen flex flex-col">
+    <!-- Header & Summary -->
+    <div class="bg-white rounded-xl shadow-md p-4 mb-4 grid grid-cols-3 gap-4">
+        <div class="text-center p-3 bg-blue-50 rounded-lg">
+            <p class="text-sm text-gray-600">Saldo Saat Ini</p>
+            <p class="text-2xl font-bold text-blue-700" id="balance">Rp 0</p>
+        </div>
+        <div class="text-center p-3 bg-green-50 rounded-lg">
+            <p class="text-sm text-gray-600">Pemasukan</p>
+            <p class="text-xl font-bold text-green-600" id="total-income">Rp 0</p>
+        </div>
+        <div class="text-center p-3 bg-red-50 rounded-lg">
+            <p class="text-sm text-gray-600">Pengeluaran</p>
+            <p class="text-xl font-bold text-red-600" id="total-expense">Rp 0</p>
+        </div>
+    </div>
+
+    <!-- Chat Area -->
+    <div class="bg-white rounded-xl shadow-md flex-1 flex flex-col overflow-hidden">
+        <div id="chat-box" class="chat-container overflow-y-auto p-4 space-y-4 bg-gray-50">
+            <div class="flex justify-start">
+                <div class="message-bubble bg-blue-100 text-gray-800 p-3 rounded-2xl rounded-tl-none shadow-sm">
+                    Halo, Saudara! Saya asisten keuangan Anda. Coba ketik: <br>
+                    • "Masuk 5000000 gaji"<br>
+                    • "Keluar 25000 makan siang"<br>
+                    • "Lihat laporan"
+                </div>
+            </div>
+        </div>
+
+        <!-- Input Area -->
+        <div class="p-4 bg-white border-t border-gray-200">
+            <form id="chat-form" class="flex gap-2">
+                <input type="text" id="user-input" 
+                    class="flex-1 border border-gray-300 rounded-full px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                    placeholder="Ketik perintah keuangan di sini..." autocomplete="off">
+                <button type="submit" 
+                    class="bg-blue-600 hover:bg-blue-700 text-white rounded-full px-6 py-3 font-semibold transition">
+                    <i class="fas fa-paper-plane"></i>
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    // --- STATE MANAGEMENT (LocalStorage) ---
+    let transactions = JSON.parse(localStorage.getItem('transactions')) || [];
+    let chatHistory = JSON.parse(localStorage.getItem('chatHistory')) || [];
+
+    // --- CORE FUNCTIONS ---
+    function formatRupiah(amount) {
+        return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(amount);
+    }
+
+    function updateDashboard() {
+        const income = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+        const expense = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+        
+        document.getElementById('balance').textContent = formatRupiah(income - expense);
+        document.getElementById('total-income').textContent = formatRupiah(income);
+        document.getElementById('total-expense').textContent = formatRupiah(expense);
+    }
+
+    function addMessage(role, text) {
+        const chatBox = document.getElementById('chat-box');
+        const div = document.createElement('div');
+        div.className = `flex ${role === 'user' ? 'justify-end' : 'justify-start'}`;
+        div.innerHTML = `
+            <div class="message-bubble ${role === 'user' ? 'bg-blue-600 text-white' : 'bg-blue-100 text-gray-800'} p-3 rounded-2xl ${role === 'user' ? 'rounded-tr-none' : 'rounded-tl-none'} shadow-sm">
+                ${text}
+            </div>
+        `;
+        chatBox.appendChild(div);
+        chatBox.scrollTop = chatBox.scrollHeight;
+        
+        chatHistory.push({ role, text });
+        localStorage.setItem('chatHistory', JSON.stringify(chatHistory));
+    }
+
+    // --- AI / PARSING LOGIC (Rule-based MVP) ---
+    function processCommand(input) {
+        const lower = input.toLowerCase();
+        
+        // 1. Intent: Tambah Pemasukan
+        if (lower.includes('masuk') || lower.includes('tambah') || lower.includes('gaji') || lower.includes('income')) {
+            const amount = parseInt(input.match(/\d+/)?.[0] || 0);
+            const desc = input.replace(/\d+/g, '').replace(/masuk|tambah|gaji|income/gi, '').trim() || 'Pemasukan';
+            if (amount > 0) {
+                transactions.push({ id: Date.now(), type: 'income', amount, desc, date: new Date().toISOString() });
+                localStorage.setItem('transactions', JSON.stringify(transactions));
+                updateDashboard();
+                return `✅ Berhasil dicatat: Pemasukan ${formatRupiah(amount)} untuk "${desc}".`;
+            }
+        }
+        
+        // 2. Intent: Tambah Pengeluaran
+        if (lower.includes('keluar') || lower.includes('bayar') || lower.includes('beli') || lower.includes('expense')) {
+            const amount = parseInt(input.match(/\d+/)?.[0] || 0);
+            const desc = input.replace(/\d+/g, '').replace(/keluar|bayar|beli|expense/gi, '').trim() || 'Pengeluaran';
+            if (amount > 0) {
+                transactions.push({ id: Date.now(), type: 'expense', amount, desc, date: new Date().toISOString() });
+                localStorage.setItem('transactions', JSON.stringify(transactions));
+                updateDashboard();
+                return `✅ Berhasil dicatat: Pengeluaran ${formatRupiah(amount)} untuk "${desc}".`;
+            }
+        }
+
+        // 3. Intent: Lihat Laporan
+        if (lower.includes('laporan') || lower.includes('ringkasan') || lower.includes('sisa')) {
+            const income = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+            const expense = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+            return `📊 <b>Ringkasan Keuangan:</b><br>• Pemasukan: ${formatRupiah(income)}<br>• Pengeluaran: ${formatRupiah(expense)}<br>• <b>Sisa Saldo: ${formatRupiah(income - expense)}</b>`;
+        }
+
+        // 4. Intent: Hapus Data
+        if (lower.includes('hapus') || lower.includes('reset')) {
+            transactions = [];
+            chatHistory = [];
+            localStorage.removeItem('transactions');
+            localStorage.removeItem('chatHistory');
+            updateDashboard();
+            document.getElementById('chat-box').innerHTML = '';
+            return `🗑️ Semua data keuangan dan riwayat chat telah direset.`;
+        }
+
+        // Default Fallback
+        return `🤔 Maaf, saya belum mengerti. Coba format:<br>• "Masuk 5000000 gaji"<br>• "Keluar 25000 makan"`;
+    }
+
+    // --- EVENT LISTENERS ---
+    document.getElementById('chat-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const input = document.getElementById('user-input');
+        const text = input.value.trim();
+        if (!text) return;
+
+        addMessage('user', text);
+        input.value = '';
+
+        // Simulasi "berpikir" sejenak
+        setTimeout(() => {
+            const response = processCommand(text);
+            addMessage('assistant', response);
+        }, 400);
+    });
+
+    // --- INIT ---
+    updateDashboard();
+    // Restore chat history (optional, max 10 last messages)
+    chatHistory.slice(-10).forEach(msg => {
+        const chatBox = document.getElementById('chat-box');
+        const div = document.createElement('div');
+        div.className = `flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`;
+        div.innerHTML = `<div class="message-bubble ${msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-blue-100 text-gray-800'} p-3 rounded-2xl ${msg.role === 'user' ? 'rounded-tr-none' : 'rounded-tl-none'} shadow-sm">${msg.text}</div>`;
+        chatBox.appendChild(div);
+    });
+</script>
+</body>
+</html>
